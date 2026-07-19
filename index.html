@@ -123,7 +123,7 @@
   <div class="stat-row" id="statRow"></div>
 
   <div class="tabs" id="phaseTabs"></div>
-
+<input type="text" id="searchBox" placeholder="Search films..." style="margin-top:14px; width:100%; padding:10px 14px; background:var(--bg-panel); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:'Inter',sans-serif; font-size:14px;">
   <div class="panel">
     <div class="panel-head">
       <div class="panel-title">Budget vs. Worldwide Gross</div>
@@ -202,12 +202,16 @@ const phaseNames = {1:"Phase One", 2:"Phase Two", 3:"Phase Three", 4:"Phase Four
 const phaseColors = {1:"#C8102E",2:"#D8AE58",3:"#4C7CA8",4:"#4F9A6E",5:"#9A6FD8",6:"#E08A3C"};
 
 let activePhase = "all";
-
+let searchTerm = "";
 function fmtM(n){ return "$" + n.toLocaleString(undefined,{maximumFractionDigits:0}) + "M"; }
 function fmtB(n){ return "$" + (n/1000).toFixed(1) + "B"; }
 
 function currentFilms(){
-  return activePhase === "all" ? films : films.filter(f => f.phase === activePhase);
+  let result = activePhase === "all" ? films : films.filter(f => f.phase === activePhase);
+  if(searchTerm.trim() !== ""){
+    result = result.filter(f => f.t.toLowerCase().includes(searchTerm.toLowerCase()));
+  }
+  return result;
 }
 
 // ---- Stats ----
@@ -338,7 +342,10 @@ function renderAll(){
   renderLineChart();
   renderCards();
 }
-
+document.getElementById('searchBox').addEventListener('input', (e) => {
+  searchTerm = e.target.value;
+  renderAll();
+});
 renderStats();
 renderTabs();
 renderAll();
