@@ -123,7 +123,8 @@
   <div class="stat-row" id="statRow"></div>
 
   <div class="tabs" id="phaseTabs"></div>
-<input type="text" id="searchBox" placeholder="Search films..." style="margin-top:14px; width:100%; padding:10px 14px; background:var(--bg-panel); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:'Inter',sans-serif; font-size:14px;">
+<input type="text" id="searchBox" placeholder="Search films..." style="margin-top:14px; width:100%; padding:10px 14px; background:var(--bg-panel); border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:'Inter',sans-serif; font-size:14px;"><button id="compareToggle" style="margin-top:10px; padding:8px 16px; background:var(--bg-panel); border:1px solid var(--line); border-radius:20px; color:var(--ink-dim); font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase; cursor:pointer;">Compare Mode: Off</button>
+<div id="compareBanner" style="display:none; margin-top:10px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--gold);"></div>
   <div class="panel">
     <div class="panel-head">
       <div class="panel-title">Budget vs. Worldwide Gross</div>
@@ -143,7 +144,10 @@
     </div>
     <canvas id="lineChart" height="90"></canvas>
   </div>
-
+<div class="panel" id="comparePanel" style="display:none;">
+  <div class="panel-head"><div class="panel-title">Head-to-Head</div></div>
+  <div id="compareGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;"></div>
+</div>
   <div class="panel">
     <div class="panel-head">
       <div class="panel-title" id="cardHeading">Film Index</div>
@@ -203,6 +207,9 @@ const phaseColors = {1:"#C8102E",2:"#D8AE58",3:"#4C7CA8",4:"#4F9A6E",5:"#9A6FD8"
 
 let activePhase = "all";
 let searchTerm = "";
+  let expandedCard = null;
+let compareMode = false;
+let compareSelection = [];
 function fmtM(n){ return "$" + n.toLocaleString(undefined,{maximumFractionDigits:0}) + "M"; }
 function fmtB(n){ return "$" + (n/1000).toFixed(1) + "B"; }
 
@@ -323,8 +330,13 @@ function renderCards(){
   document.getElementById('cardGrid').innerHTML = set.map(f=>{
     const mult = f.gross / f.budget;
     const badgeClass = mult >= 3 ? 'win' : mult >= 1.8 ? 'mid' : 'loss';
+    const isExpanded = expandedCard === f.t;
+    const isSelected = compareSelection.includes(f.t);
+    const profit = f.gross - f.budget;
+    const domShare = ((f.dom / f.gross) * 100).toFixed(0);
+
     return `
-    <div class="card">
+    <div class="card" data-title="${f.t}" style="${isSelected ? 'border-color:var(--gold); box-shadow:0 0 0 1px var(--gold);' : ''} cursor:pointer;">
       <div class="badge ${badgeClass}">${mult.toFixed(1)}×</div>
       <div class="yr">${f.y} · ${phaseNames[f.phase]}</div>
       <div class="title">${f.t}</div>
@@ -333,8 +345,29 @@ function renderCards(){
       <div class="row"><span>Domestic</span><b>${fmtM(f.dom)}</b></div>
       <div class="row"><span>Rotten Tomatoes</span><b>${f.rt}%</b></div>
       <div class="rt-bar"><div class="rt-fill" style="width:${f.rt}%; background:${f.rt>=70?'#4F9A6E':f.rt>=50?'#D8AE58':'#C8102E'}"></div></div>
+      ${isExpanded ? `
+        <div class="row"><span>Profit</span><b>${fmtM(profit)}</b></div>
+        <div class="row"><span>Domestic Share</span><b>${domShare}%</b></div>
+      ` : ''}
     </div>`;
   }).join('');
+
+  document.querySelectorAll('.card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const title = card.dataset.title;
+      if(compareMode){
+        if(compareSelection.includes(title)){
+          compareSelection = compareSelection.filter(t=>t!==title);
+        } else if(compareSelection.length < 2){
+          compareSelection.push(title);
+        }
+        updateCompareView();
+      } else {
+        expandedCard = expandedCard === title ? null : title;
+      }
+      renderCards();
+    });
+  });
 }
 
 function renderAll(){
@@ -342,9 +375,54 @@ function renderAll(){
   renderLineChart();
   renderCards();
 }
+  function updateCompareView(){
+  const banner = document.getElementById('compareBanner');
+  const panel = document.getElementById('comparePanel');
+  const grid = document.getElementById('compareGrid');
+
+  if(!compareMode){
+    banner.style.display = 'none';
+    panel.style.display = 'none';
+    return;
+  }
+
+  banner.style.display = 'block';
+  if(compareSelection.length < 2){
+    banner.textContent = `Select ${2 - compareSelection.length} more film${compareSelection.length===0?'s':''} to compare (${compareSelection.length}/2 selected)`;
+    panel.style.display = 'none';
+  } else {
+    banner.textContent = 'Comparing 2 films — click a selected card to swap it out';
+    panel.style.display = 'block';
+    grid.innerHTML = compareSelection.map(title=>{
+      const f = films.find(film=>film.t === title);
+      const mult = f.gross / f.budget;
+      return `
+      <div class="card">
+        <div class="yr">${f.y} · ${phaseNames[f.phase]}</div>
+        <div class="title">${f.t}</div>
+        <div class="row"><span>Budget</span><b>${fmtM(f.budget)}</b></div>
+        <div class="row"><span>Worldwide Gross</span><b>${fmtM(f.gross)}</b></div>
+        <div class="row"><span>Domestic</span><b>${fmtM(f.dom)}</b></div>
+        <div class="row"><span>Profit</span><b>${fmtM(f.gross - f.budget)}</b></div>
+        <div class="row"><span>Return Multiple</span><b>${mult.toFixed(1)}×</b></div>
+        <div class="row"><span>Rotten Tomatoes</span><b>${f.rt}%</b></div>
+      </div>`;
+    }).join('');
+  }
+}
 document.getElementById('searchBox').addEventListener('input', (e) => {
   searchTerm = e.target.value;
   renderAll();
+});
+  document.getElementById('compareToggle').addEventListener('click', () => {
+  compareMode = !compareMode;
+  compareSelection = [];
+  expandedCard = null;
+  document.getElementById('compareToggle').textContent = compareMode ? 'Compare Mode: On' : 'Compare Mode: Off';
+  document.getElementById('compareToggle').style.background = compareMode ? 'var(--red)' : 'var(--bg-panel)';
+  document.getElementById('compareToggle').style.color = compareMode ? '#fff' : 'var(--ink-dim)';
+  updateCompareView();
+  renderCards();
 });
 renderStats();
 renderTabs();
